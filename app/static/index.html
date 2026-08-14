@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ConsultBae - Audio Submission</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
+  h1 { font-size: 1.3rem; }
+  label { display: block; margin-top: 14px; font-weight: 600; font-size: 0.9rem; }
+  input[type=text], input[type=tel] { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
+  button { margin-top: 14px; padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; }
+  #recordBtn { background: #d33; color: white; }
+  #recordBtn.recording { background: #900; }
+  #submitBtn { background: #16a34a; color: white; }
+  #submitBtn:disabled { background: #999; cursor: not-allowed; }
+  audio { width: 100%; margin-top: 10px; }
+  #status { margin-top: 12px; font-size: 0.9rem; white-space: pre-wrap; }
+  #status.error { color: #c00; }
+  #status.success { color: #16a34a; }
+  a { color: #06c; }
+  .row { display: flex; gap: 8px; align-items: center; }
+</style>
+</head>
+<body>
+  <h1>Gig Worker Audio Submission</h1>
+  <p><a href="/submissions">View all submissions &rarr;</a></p>
+
+  <label>Name</label>
+  <input type="text" id="name" placeholder="Full name">
+
+  <label>Phone number</label>
+  <input type="tel" id="phone" placeholder="e.g. 9000000123">
+
+  <label>Audio</label>
+  <div class="row">
+    <button id="recordBtn" type="button">Record</button>
+    <input type="file" id="fileInput" accept="audio/*">
+  </div>
+  <audio id="preview" controls style="display:none"></audio>
+
+  <button id="submitBtn" type="button" disabled>Submit</button>
+  <div id="status"></div>
+
+<script>
+let mediaRecorder, chunks = [], recordedBlob = null, uploadedFile = null;
+const recordBtn = document.getElementById('recordBtn');
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const submitBtn = document.getElementById('submitBtn');
+const statusEl = document.getElementById('status');
+
+recordBtn.addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    recordBtn.textContent = 'Record';
+    recordBtn.classList.remove('recording');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      recordedBlob = new Blob(chunks, { type: 'audio/webm' });
+      uploadedFile = null;
+      fileInput.value = '';
+      preview.src = URL.createObjectURL(recordedBlob);
+      preview.style.display = 'block';
+      updateSubmitState();
+      stream.getTracks().forEach(t => t.stop());
+    };
+    mediaRecorder.start();
+    recordBtn.textContent = 'Stop';
+    recordBtn.classList.add('recording');
+  } catch (err) {
+    statusEl.textContent = 'Microphone access denied or unavailable: ' + err.message;
+    statusEl.className = 'error';
+  }
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) {
+    uploadedFile = fileInput.files[0];
+    recordedBlob = null;
+    preview.src = URL.createObjectURL(uploadedFile);
+    preview.style.display = 'block';
+    updateSubmitState();
+  }
+});
+
+function updateSubmitState() {
+  submitBtn.disabled = !(recordedBlob || uploadedFile);
+}
+
+submitBtn.addEventListener('click', async () => {
+  const name = document.getElementById('name').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  if (!name || !phone) {
+    statusEl.textContent = 'Please enter your name and phone number.';
+    statusEl.className = 'error';
+    return;
+  }
+  const audioBlob = recordedBlob || uploadedFile;
+  if (!audioBlob) return;
+
+  const formData = new FormData();
+  formData.append('name', name);
+  formData.append('phone', phone);
+  const filename = uploadedFile ? uploadedFile.name : 'recording.webm';
+  formData.append('file', audioBlob, filename);
+
+  submitBtn.disabled = true;
+  statusEl.textContent = 'Uploading and analyzing...';
+  statusEl.className = '';
+
+  try {
+    const res = await fetch('/api/audio/submit', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Submission failed');
+    statusEl.className = 'success';
+    statusEl.textContent =
+      'Submitted!\n' +
+      `Duration: ${data.metadata.duration_sec}s\n` +
+      `Sample rate: ${data.metadata.sample_rate_hz} Hz\n` +
+      `Bitrate: ${data.metadata.bitrate_kbps} kbps\n` +
+      `Loudness: ${data.metadata.loudness_db} dB\n` +
+      `Quality note: ${data.metadata.quality_note}` +
+      (data.linked_person_id ? `\nLinked to existing person #${data.linked_person_id}` : '\nNo matching person record found (new phone number)');
+  } catch (err) {
+    statusEl.className = 'error';
+    statusEl.textContent = 'Error: ' + err.message;
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

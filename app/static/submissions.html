@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ConsultBae - All Submissions</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
+  h1 { font-size: 1.3rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 0.85rem; vertical-align: top; }
+  th { background: #fafafa; }
+  audio { width: 200px; }
+  a { color: #06c; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #eef; font-size: 0.75rem; }
+  .empty { color: #666; margin-top: 20px; }
+</style>
+</head>
+<body>
+  <h1>All Audio Submissions</h1>
+  <p><a href="/">&larr; Back to submission form</a></p>
+  <div id="content">Loading...</div>
+
+<script>
+async function load() {
+  const res = await fetch('/api/audio/submissions');
+  const rows = await res.json();
+  const content = document.getElementById('content');
+  if (!rows.length) {
+    content.innerHTML = '<p class="empty">No submissions yet.</p>';
+    return;
+  }
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead><tr>
+      <th>Name</th><th>Phone</th><th>Linked Person</th><th>Audio</th>
+      <th>Duration</th><th>Sample Rate</th><th>Bitrate</th><th>Loudness</th><th>Quality Note</th><th>Submitted</th>
+    </tr></thead>
+    <tbody></tbody>`;
+  const tbody = table.querySelector('tbody');
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.name || ''}</td>
+      <td>${r.phone || ''}</td>
+      <td>${r.linked_person_name ? `<span class="badge">${r.linked_person_name}</span>` : '<span style="color:#999">unmatched</span>'}</td>
+      <td><audio controls src="/api/audio/file/${r.file_path}"></audio></td>
+      <td>${r.duration_sec ?? '-'} s</td>
+      <td>${r.sample_rate_hz ?? '-'} Hz</td>
+      <td>${r.bitrate_kbps ?? '-'} kbps</td>
+      <td>${r.loudness_db ?? '-'} dB</td>
+      <td>${r.quality_note || ''}</td>
+      <td>${r.submitted_at || ''}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  content.innerHTML = '';
+  content.appendChild(table);
+}
+load();
+</script>
+</body>
+</html>
